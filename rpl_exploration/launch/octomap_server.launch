@@ -1,15 +1,21 @@
 <?xml version="1.0" ?>
 <launch>
+	<arg name="resolution" default="0.2" />
+	<arg name="publish_free_space" default="true" />
+	<arg name="frame_id" default="map" />
+	<arg name="max_range" default="5" />
+	<arg name="cloud_in" default="/firefly/camera_front/depth/points" />
+
 	<node pkg="octomap_server" type="octomap_server_node" name="octomap_server">
-  <param name="resolution" value="0.2" />
-		<param name="publish_free_space" value="true" />
+  		<param name="resolution" value="$(arg resolution)" />
+		<param name="publish_free_space" value="$(arg publish_free_space)" />
 		
 		<!-- fixed map frame (set to 'map' if SLAM or localization running!) -->
-		<param name="frame_id" type="string" value="map" />
+		<param name="frame_id" type="string" value="$(arg frame_id)" />
 		
 		<!-- maximum range to integrate (speedup!) -->
-		<param name="sensor_model/max_range" value="5" />
+		<param name="sensor_model/max_range" value="$(arg max_range)" />
 
-    <remap from="cloud_in" to="/camera/depth/points2" />
+    	<remap from="cloud_in" to="$(arg cloud_in)" />
 	</node>
 </launch>

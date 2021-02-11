@@ -14,7 +14,7 @@ namespace rpl_exploration {
 
       tf::TransformListener listener;
     public:
-      FlyTo() : pub_(nh_.advertise<geometry_msgs::PoseStamped>("fly_to_cmd", 1000)),
+      FlyTo() : pub_(nh_.advertise<geometry_msgs::PoseStamped>("fly_to_cmd", 10)),
                 as_(nh_, "fly_to", boost::bind(&FlyTo::execute, this, _1, &as_), false)
       {
         ROS_INFO("Starting fly to server");
@@ -52,8 +52,8 @@ namespace rpl_exploration {
           ROS_INFO_STREAM("Publishing goal to (" << p.x << ", " << p.y << ", " << p.z << ") ");
           pub_.publish(goal->pose);
 
-          listener.waitForTransform("/odom", "/base_link", ros::Time(0), ros::Duration(10.0) );
-          listener.lookupTransform("/odom", "/base_link", ros::Time(0), transform);
+          listener.waitForTransform("/world", "/base_link", ros::Time(0), ros::Duration(10.0) );
+          listener.lookupTransform("/world", "/base_link", ros::Time(0), transform);
 
           geometry_msgs::Point q;
           q.x = (float)transform.getOrigin().x(); 

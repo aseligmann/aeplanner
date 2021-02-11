@@ -8,8 +8,8 @@ AEPlanner::AEPlanner(const ros::NodeHandle& nh)
   , as_(nh_, "make_plan", boost::bind(&AEPlanner::execute, this, _1), false)
   , octomap_sub_(nh_.subscribe("octomap", 1, &AEPlanner::octomapCallback, this))
   , agent_pose_sub_(nh_.subscribe("agent_pose", 1, &AEPlanner::agentPoseCallback, this))
-  , rrt_marker_pub_(nh_.advertise<visualization_msgs::MarkerArray>("rrtree", 1000))
-  , gain_pub_(nh_.advertise<pigain::Node>("gain_node", 1000))
+  , rrt_marker_pub_(nh_.advertise<visualization_msgs::MarkerArray>("rrtree", 10))
+  , gain_pub_(nh_.advertise<pigain::Node>("gain_node", 10))
   , gp_query_client_(nh_.serviceClient<pigain::Query>("gp_query_server"))
   , reevaluate_server_(nh_.advertiseService("reevaluate", &AEPlanner::reevaluate, this))
   , best_node_client_(nh_.serviceClient<pigain::BestNode>("best_node_server"))
@@ -539,12 +539,12 @@ void AEPlanner::publishEvaluatedNodesRecursive(RRTNode* node)
   }
 }
 
-void AEPlanner::agentPoseCallback(const geometry_msgs::PoseStamped& msg)
-{
-  current_state_[0] = msg.pose.position.x;
-  current_state_[1] = msg.pose.position.y;
-  current_state_[2] = msg.pose.position.z;
-  current_state_[3] = tf2::getYaw(msg.pose.orientation);
+void AEPlanner::agentPoseCallback(const geometry_msgs::Pose& msg)
+{ 
+  current_state_[0] = msg.position.x;
+  current_state_[1] = msg.position.y;
+  current_state_[2] = msg.position.z;
+  current_state_[3] = tf2::getYaw(msg.orientation);
 
   current_state_initialized_ = true;
 }

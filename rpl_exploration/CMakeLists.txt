@@ -15,6 +15,8 @@ find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
   octomap_msgs
   nodelet
+
+  std_srvs
   
   genmsg 
   actionlib_msgs 
@@ -125,6 +127,7 @@ catkin_package(
 #  LIBRARIES rpl_exploration
 #  CATKIN_DEPENDS octomap roscpp sensor_msgs std_msgs
 #  DEPENDS system_lib
+  CATKIN_DEPENDS std_srvs
 )
 
 ###########

@@ -1,0 +1,103 @@
+<?xml version="1.0" ?>
+<launch>
+  <!-- All settings -->
+  <arg name="mav_name" default="firefly"/>
+  <arg name="mav_model" default="$(find rotors_description)/urdf/mav_with_three_vi_sensor.gazebo"/>
+  <arg name="gui" default="true"/>
+  <arg name="visualize" default="true"/>
+
+
+  <arg name="launch_prefix" default=""/> <!-- gdb -ex run //args  | xterm -e gdb -args-->
+  <arg name="rviz_en" default="$(arg visualize)" />
+  <arg name="use_sim_time" default="true"/>
+  <param name="use_sim_time" value="$(arg use_sim_time)"/>
+
+  
+
+  <!-- <arg name="world_file" default="$(find planner_gazebo_sim)/worlds/pittsburgh_mine.world"/> -->
+  <arg name="world_file" default="$(find planner_gazebo_sim)/worlds/ballast_tank.world"/>
+
+  <!-- ROS Gazebo  -->
+  <env name="GAZEBO_MODEL_PATH" value="${GAZEBO_MODEL_PATH}:$(find planner_gazebo_sim)/models"/>
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name" value="$(arg world_file)" />
+    <arg name="gui" value="$(arg gui)" />
+    <arg name="use_sim_time" value="$(arg use_sim_time)"/>
+    <arg name="paused" value="false" />
+    <arg name="verbose" value="false"/>
+  </include>
+
+  <group ns="$(arg mav_name)">
+    <!-- MAV launch -->
+    <include file="$(find rotors_gazebo)/launch/spawn_mav.launch">
+      <arg name="mav_name" value="$(arg mav_name)" />
+      <arg name="model" value="$(arg mav_model)" />
+      <arg name="enable_ground_truth" value="true" />
+      <arg name="x" value="0.0"/>
+      <arg name="y" value="0.0"/>
+      <arg name="z" value="0.1"/>
+    </include>
+
+    <!-- <param name="robot_description" command="$(find xacro)/xacro $(find rotors_description)/urdf/$(arg mav_name)_base.xacro"/> -->
+    <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" />
+
+    <!-- Position controller  -->
+    <node name="lee_position_controller_node" pkg="rotors_control" type="lee_position_controller_node" output="screen">
+      <rosparam command="load" file="$(find rotors_gazebo)/resource/lee_controller_$(arg mav_name).yaml" />
+      <rosparam command="load" file="$(find rotors_gazebo)/resource/$(arg mav_name).yaml" />
+      <remap from="odometry" to="odometry_sensor1/odometry" />
+    </node>
+
+    <!-- <param name="robot_description" command="$(find xacro)/xacro $(find rotors_description)/urdf/$(arg mav_name)_base.xacro namespace:=$(arg mav_name) enable_mavlink_interface:=false enable_ground_truth:=true"/> -->
+    <!-- <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" /> -->
+    <node pkg="tf" type="static_transform_publisher" name="tf_cam_front"     args="0.15 0.0 0.0 0.0 0.0 0.0 $(arg mav_name)/base_link $(arg mav_name)/camera_front_link 1" />
+    <node pkg="tf" type="static_transform_publisher" name="tf_cam_up"        args="0.0 0.0 0.10 0.0 -1.57 0.0 $(arg mav_name)/base_link $(arg mav_name)/camera_up_link 1" />
+    <node pkg="tf" type="static_transform_publisher" name="tf_cam_down"      args="0.0 0.0 -0.10 0.0 1.57 0.0 $(arg mav_name)/base_link $(arg mav_name)/camera_down_link 1" />
+    <node pkg="tf" type="static_transform_publisher" name="tf_cam_front_opt" args="0.0 0.0 0.0 -1.57 0.0 -1.57 $(arg mav_name)/camera_front_link $(arg mav_name)/camera_front_optical_center_link 1" />
+    <node pkg="tf" type="static_transform_publisher" name="tf_cam_up_opt"    args="0.0 0.0 0.0 -1.57 0.0 -1.57 $(arg mav_name)/camera_up_link $(arg mav_name)/camera_up_optical_center_link 1" />
+    <node pkg="tf" type="static_transform_publisher" name="tf_cam_down_opt"  args="0.0 0.0 0.0 -1.57 0.0 -1.57 $(arg mav_name)/camera_down_link $(arg mav_name)/camera_down_optical_center_link 1" />
+
+    <node pkg="tf" type="static_transform_publisher" name="tf_hack"     args="0.0 0.0 0.0 0.0 0.0 0.0 $(arg mav_name)/base_link base_link 1" />
+    <node pkg="tf" type="static_transform_publisher" name="tf_world_map"     args="0.0 0.0 0.0 0.0 0.0 0.0 world map 1" />
+
+    <node name="pose_throttler" type="throttle" pkg="topic_tools" args="messages /$(arg mav_name)/ground_truth/pose 10 /test/pose" />
+
+  </group>
+
+  <!-- Planner START -->
+
+  <group ns="aeplanner">
+    <arg name="param_file" default="$(find rpl_exploration)/config/exploration.yaml" />
+
+    <!-- <node pkg="tf2_ros" type="static_transform_publisher" name="primesense_broadcaster" args="0.05 0 0.13 -1.57079633 0 -1.57079633 base_link camera_link" /> -->
+
+    <include file="$(find aeplanner)/launch/aeplanner_nodelet.launch"/>
+    <include file="$(find pigain)/launch/pig.launch"/>
+    <include file="$(find rpl_exploration)/launch/fly_to.launch"/>
+    <include file="$(find rpl_exploration)/launch/octomap_server.launch"/>
+    <include file="$(find rrtplanner)/launch/rrtplanner.launch"/>
+
+    <node name="rpl_exploration" pkg="rpl_exploration" type="rpl_exploration" output="screen" />
+    <rosparam command="load" file="$(arg param_file)" />
+  </group>
+
+  <!-- Nodelet manager for camera-->
+  <!-- probably not needed anymore -->
+  <!-- <node pkg="nodelet" type="nodelet" args="manager" name="camera_manager" output="screen"/> -->
+
+  <!-- <node pkg="nodelet" type="nodelet" name="image_to_points" args="load depth_image_proc/point_cloud_xyz camera_manager - -no-bond">
+    <remap from="camera_info" to="/camera/depth/camera_info" />
+    <remap from="image_rect" to="/camera/depth/image_raw2" />
+    <remap from="points" to="/camera/depth/points2" />
+    <param name="queue_size" value="100" />
+  </node> -->
+
+  <!-- <node pkg="rpl_exploration" type="image_maxing.py" name="image_maxing" /> -->
+
+  <!-- Planner END -->
+
+  <group if="$(arg rviz_en)">
+    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find aeplanner)/aeplanner.rviz" />
+  </group>
+
+</launch>

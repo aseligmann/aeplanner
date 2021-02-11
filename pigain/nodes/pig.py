@@ -3,6 +3,7 @@ import rospy
 from visualization_msgs.msg import Marker
 from visualization_msgs.msg import MarkerArray
 from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import Pose
 
 from pigain.msg import Node
 from pigain.srv import Query, QueryResponse
@@ -27,7 +28,7 @@ class PIGain:
         self.resolution      = rospy.get_param('~visualize/resolution',   1)
 
         self.gain_sub = rospy.Subscriber('gain_node', Node, self.gain_callback)
-        self.pose_sub = rospy.Subscriber('pose', PoseStamped, self.pose_callback)
+        self.pose_sub = rospy.Subscriber('pose', Pose, self.pose_callback)
         self.marker_pub = rospy.Publisher('pig_markers', MarkerArray, queue_size=10)
         self.mean_pub = rospy.Publisher('mean_markers', MarkerArray, queue_size=10)
         self.sigma_pub = rospy.Publisher('sigma_markers', MarkerArray, queue_size=10)
@@ -71,9 +72,9 @@ class PIGain:
 
     """ Save current pose of agent """
     def pose_callback(self, msg):
-        self.x = msg.pose.position.x
-        self.y = msg.pose.position.y
-        self.z = msg.pose.position.z
+        self.x = msg.position.x
+        self.y = msg.position.y
+        self.z = msg.position.z
 
     """ Reevaluate gain in all cached nodes that are closer to agent than self.range """
     def reevaluate_timer_callback(self, event):

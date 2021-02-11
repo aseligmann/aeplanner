@@ -18,6 +18,37 @@
 #include <nav_msgs/Path.h>
 #include <tf2/utils.h>
 
+#include <std_srvs/SetBool.h>
+
+
+
+// EVALUATING USING MAV_ACTIVE_3D_PLANNER EVALUATION FRAMEWORK //////////////////////////////
+bool eval_planning_ = false;
+bool eval_runSrvCallback(std_srvs::SetBool::Request &req, std_srvs::SetBool::Response &res) {
+    res.success = true;
+    ROS_INFO_STREAM("EVAL: Got request for TOGGLE RUNNING.");
+    if (req.data) {
+        eval_planning_ = true;
+        ROS_INFO("EVAL: Started planning.");
+    } else {
+        eval_planning_ = false;
+        ROS_INFO("EVAL: Stopped planning.");
+    }
+    return true;
+}
+clock_t eval_cpu_srv_timer_ = std::clock();
+bool eval_cpuSrvCallback(std_srvs::SetBool::Request &req, std_srvs::SetBool::Response &res) {
+    ROS_INFO_STREAM("EVAL: Got request for CPU service.");
+    double time = (double) (std::clock() - eval_cpu_srv_timer_) / CLOCKS_PER_SEC;
+    eval_cpu_srv_timer_ = std::clock();
+
+    // Just return cpu time as the service message
+    res.message = std::to_string(time).c_str();
+    res.success = true;
+    return true;
+}
+/////////////////////////////////////////////////////////////////////////////////////////////
+
 int main(int argc, char** argv)
 {
   ros::init(argc, argv, "exploration");
@@ -30,10 +61,7 @@ int main(int argc, char** argv)
   logfile.open(path + "/data/logfile.csv");
   pathfile.open(path + "/data/path.csv");
 
-  ros::Publisher pub(nh.advertise<geometry_msgs::PoseStamped>("/mavros/"
-                                                              "setpoint_position/"
-                                                              "local",
-                                                              1000));
+  ros::Publisher pub(nh.advertise<geometry_msgs::PoseStamped>("/firefly/command/pose", 10));
 
   ros::ServiceClient coverage_srv =
       nh.serviceClient<aeplanner_evaluation::Coverage>("/get_coverage");
@@ -58,25 +86,48 @@ int main(int argc, char** argv)
   ROS_INFO("rrt Action server started!");
 
   // Get current pose
-  geometry_msgs::PoseStamped::ConstPtr init_pose =
-      ros::topic::waitForMessage<geometry_msgs::PoseStamped>("/mavros/"
-                                                             "local_position/pose");
-  double init_yaw = tf2::getYaw(init_pose->pose.orientation);
+  geometry_msgs::Pose::ConstPtr init_pose_nonstamped =
+      ros::topic::waitForMessage<geometry_msgs::Pose>("/test/pose");
+  geometry_msgs::PoseStamped init_pose_temp;
+  init_pose_temp.pose.position = init_pose_nonstamped->position;
+  init_pose_temp.pose.orientation = init_pose_nonstamped->orientation;
+  init_pose_temp.header.frame_id = "map";
+  init_pose_temp.header.stamp = ros::Time::now();
+  geometry_msgs::PoseStamped init_pose = init_pose_temp;
+
+  double init_yaw = tf2::getYaw(init_pose.pose.orientation);
   // Up 2 meters and then forward one meter
-//  double initial_positions[8][4] = {
-//    { init_pose->pose.position.x, init_pose->pose.position.y,
-//      init_pose->pose.position.z + 2.0, init_yaw },
-//    { init_pose->pose.position.x + 1.0 * std::cos(init_yaw),
-//      init_pose->pose.position.y + 1.0 * std::sin(init_yaw),
-//      init_pose->pose.position.z + 2.0, init_yaw },
-//  };
+ double initial_positions[8][4] = {
+   { init_pose.pose.position.x, init_pose.pose.position.y,
+     init_pose.pose.position.z + 1.5, init_yaw },
+   { init_pose.pose.position.x + 1.0,
+     init_pose.pose.position.y + 1.0,
+     init_pose.pose.position.z + 1.5, init_yaw },
+ };
 
   // Modification for UGV to reduce z to zero
-    double initial_positions[8][4] = {
-      { init_pose->pose.position.x + 5, init_pose->pose.position.y, 0.0, init_yaw },
-      { init_pose->pose.position.x + 5 * std::cos(init_yaw),
-        init_pose->pose.position.y + 1.0 * std::sin(init_yaw), 0.0, init_yaw },
-    };
+    // double initial_positions[8][4] = {
+    //   { init_pose.pose.position.x + 5, init_pose.pose.position.y, 0.0, init_yaw },
+    //   { init_pose.pose.position.x + 5 * std::cos(init_yaw),
+    //     init_pose.pose.position.y + 1.0 * std::sin(init_yaw), 0.0, init_yaw },
+    // };
+
+
+
+  // EVALUATING USING MAV_ACTIVE_3D_PLANNER EVALUATION FRAMEWORK //////////////////////////////
+  ros::ServiceServer eval_run_srv_ = nh.advertiseService("/planner_evaluation/toggle_running", eval_runSrvCallback);
+  ros::ServiceServer eval_get_cpu_time_srv_ = nh.advertiseService("/planner_evaluation/get_cpu_time", eval_cpuSrvCallback);
+  ros::Rate eval_r(1);
+  while (!eval_planning_) {
+    ROS_INFO("EVAL: Waiting for service request on %s to start planning...", eval_run_srv_.getService().c_str());
+    ros::spinOnce();
+    eval_r.sleep();
+  }
+  eval_cpu_srv_timer_ = std::clock();
+  ROS_INFO("Continuing...");
+  /////////////////////////////////////////////////////////////////////////////////////////////
+
+
 
   // This is the initialization motion, necessary that the known free space
   // allows the planning of initial paths.
@@ -88,7 +139,7 @@ int main(int argc, char** argv)
     rpl_exploration::FlyToGoal goal;
     // Added header to support move base
     goal.pose.header.stamp = ros::Time::now();
-    goal.pose.header.frame_id  = "odom";
+    goal.pose.header.frame_id  = "map";
     goal.pose.pose.position.x = initial_positions[i][0];
     goal.pose.pose.position.y = initial_positions[i][1];
     goal.pose.pose.position.z = initial_positions[i][2];
@@ -96,14 +147,15 @@ int main(int argc, char** argv)
         tf::createQuaternionMsgFromYaw(initial_positions[i][3]);
     last_pose.pose = goal.pose.pose;
     last_pose.header.stamp = ros::Time::now();
-    last_pose.header.frame_id  = "odom";
-    ROS_INFO_STREAM("Current position: (" << init_pose->pose.position.x << ", " << init_pose->pose.position.y << ", " << init_pose->pose.position.z << ") ");
+    last_pose.header.frame_id  = "map";
+    ROS_INFO_STREAM("Current position: (" << init_pose.pose.position.x << ", " << init_pose.pose.position.y << ", " << init_pose.pose.position.z << ") ");
     ROS_INFO_STREAM("Sending initial goal..." << goal);
     ac.sendGoal(goal);
 
     ac.waitForResult(ros::Duration(0));
 
 	printf("Current State: %s\n", ac.getState().toString().c_str());
+    ros::spinOnce();
   }
 
   // Start planning: The planner is called and the computed path sent to the
@@ -112,13 +164,13 @@ int main(int argc, char** argv)
   int actions_taken = 1;
 
   ros::Time start = ros::Time::now();
-  while (ros::ok())
+  while (ros::ok() && eval_planning_)
   {
     ROS_INFO_STREAM("Planning iteration " << iteration);
     aeplanner::aeplannerGoal aep_goal;
     aep_goal.header.stamp = ros::Time::now();
     aep_goal.header.seq = iteration;
-    aep_goal.header.frame_id = "odom";
+    aep_goal.header.frame_id = "map";
     aep_goal.actions_taken = actions_taken;
     ROS_INFO_STREAM("Sending goal..." << aep_goal);
     aep_ac.sendGoal(aep_goal);
@@ -126,9 +178,9 @@ int main(int argc, char** argv)
     while (!aep_ac.waitForResult(ros::Duration(0.05)))
     {
       pub.publish(last_pose);
-      ROS_INFO_STREAM("Not waiting for the result, sending last pose." << last_pose);
+      // ROS_INFO_STREAM("Not waiting for the result, sending last pose." << last_pose);
     }
-    ROS_INFO_STREAM("Current result" << aep_ac.getResult());
+    // ROS_INFO_STREAM("Current result" << aep_ac.getResult());
 
     ros::Duration fly_time;
     if (aep_ac.getResult()->is_clear)
@@ -145,7 +197,7 @@ int main(int argc, char** argv)
       rpl_exploration::FlyToGoal goal;
       // Added header to support move base
       goal.pose.header.stamp = ros::Time::now();
-      goal.pose.header.frame_id  = "odom";
+      goal.pose.header.frame_id  = "map";
       goal.pose = goal_pose;
       ac.sendGoal(goal);
 
@@ -157,7 +209,7 @@ int main(int argc, char** argv)
     {
       rrtplanner::rrtGoal rrt_goal;
       rrt_goal.start.header.stamp = ros::Time::now();
-      rrt_goal.start.header.frame_id = "odom";
+      rrt_goal.start.header.frame_id = "map";
       rrt_goal.start.pose = last_pose.pose;
       if (!aep_ac.getResult()->frontiers.poses.size())
       {
@@ -189,7 +241,7 @@ int main(int argc, char** argv)
         rpl_exploration::FlyToGoal goal;
         // Added header to support move base
 	goal.pose.header.stamp = ros::Time::now();
-      	goal.pose.header.frame_id  = "odom";
+      	goal.pose.header.frame_id  = "map";
         goal.pose.pose = goal_pose;
         ac.sendGoal(goal);
 
@@ -218,6 +270,8 @@ int main(int argc, char** argv)
             << aep_ac.getResult()->tree_size << std::endl;
 
     iteration++;
+
+    ros::spinOnce();
   }
 
   pathfile.close();

@@ -18,7 +18,7 @@ namespace aeplanner
       ROS_WARN_STREAM("No vertical fov specified. Default: " << params.vfov);
     }
     params.dr = 0.1;
-    if (!ros::param::get("/octomap_server/resolution", params.dr)) {
+    if (!ros::param::get(ns + "/octomap_server/resolution", params.dr)) {
       ROS_WARN_STREAM("Could not read octomap resolution. Looking for /octomap_server/resolution.");
       ROS_WARN_STREAM("Using resolution specified by param file instead");
     }
@@ -83,7 +83,7 @@ namespace aeplanner
     if (!ros::param::get(ns + "/system/bbx/overshoot", params.d_overshoot_)) {
       ROS_WARN_STREAM("No /system/bbx/overshoot specified. Default: " << params.d_overshoot_);
     }
-    params.world_frame = "world";
+    params.world_frame = "map";
     if (!ros::param::get(ns + "/world_frame", params.world_frame)) {
       ROS_WARN_STREAM("No /world_frame specified. Default: " << params.world_frame);
     }
